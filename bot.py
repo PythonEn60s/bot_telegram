@@ -1,12 +1,29 @@
+import os
 from telegram import Update, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 from apscheduler.schedulers.background import BackgroundScheduler
 import asyncio
+from flask import Flask
+from threading import Thread
 
-# Token del bot
-TOKEN = '7881078584:AAFh90GNIEkeJrX9CM9lvxq16SbiQyU2Xyk'
-# Reemplaza este ID con el ID real de tu grupo (usa @userinfobot para obtenerlo)
-GROUP_ID = -2510330599
+# Flask app para keep_alive
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot está corriendo!"
+
+def run():
+    app.run(host='0.0.0.0', port=8000)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.daemon = True
+    t.start()
+
+# Variables de entorno
+TOKEN = os.getenv("TOKEN")
+GROUP_ID = int(os.getenv("GROUP_ID"))
 
 # Comando /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -17,7 +34,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Aquí estamos para ayudarnos entre todos.\n\n"
         "Para comenzar, escribe /help y descubre recursos y enlaces útiles.\n"
         "También síguenos en TikTok para más contenido: https://www.tiktok.com/@pythonen60seg\n"
-        "Y no olvides la documentación oficial de Python: https://www.python.org/doc/\n"
+        "Y no olvides la documentación oficial de Python: https://python.org/doc/\n"
     )
     await update.message.reply_text(mensaje)
 
@@ -46,23 +63,28 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"¡Bienvenido/a! 🎊🎉"
         )
 
-# Mensaje programado para activar el grupo
+# Mensaje programado para activar el grupo, versión asíncrona para apscheduler
 async def enviar_mensaje():
     await bot.send_message(chat_id=GROUP_ID, text="📢 ¡Gracias por formar parte de la comunidad PythonEn60s, No olvides compartir tus dudas, tips o avances en Python! 🐍📋")
 
+def job():
+    asyncio.create_task(enviar_mensaje())
+
 # Crear bot y aplicación
 bot = Bot(TOKEN)
-app = ApplicationBuilder().token(TOKEN).build()
+app_telegram = ApplicationBuilder().token(TOKEN).build()
 
-# Programar tarea cada 2 horas
+# Programar tarea cada 2 horas (usando job síncrono que lanza tarea asíncrona)
 scheduler = BackgroundScheduler()
-scheduler.add_job(lambda: asyncio.run(enviar_mensaje()), 'interval', hours=2)
+scheduler.add_job(job, 'interval', hours=2)
 scheduler.start()
 
 # Agregar handlers
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("help", help_command))
-app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
+app_telegram.add_handler(CommandHandler("start", start))
+app_telegram.add_handler(CommandHandler("help", help_command))
+app_telegram.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
 
-# Ejecutar el bot
-app.run_polling()
+# Ejecutar keep_alive y bot
+if __name__ == '__main__':
+    keep_alive()
+    app_telegram.run_polling()
